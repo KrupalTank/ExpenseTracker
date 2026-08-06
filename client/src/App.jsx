@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+
+axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 import Navbar from './components/Navbar';
 import SummaryCards from './components/SummaryCards';
 import CurrentMonthExpenses from './components/CurrentMonthExpenses';
