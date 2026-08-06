@@ -1,0 +1,10 @@
+{
+  "short_name": "KharchBook",
+  "name": "KharchBook - Personal Expense Tracker",
+  "icons": [],
+  "start_url": "/",
+  "background_color": "#f8fafc",
+  "theme_color": "#1d4ed8",
+  "display": "standalone",
+  "orientation": "portrait"
+}
