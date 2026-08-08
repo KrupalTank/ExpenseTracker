@@ -9,6 +9,7 @@ import CurrentMonthExpenses from './components/CurrentMonthExpenses';
 import MonthlyHistory from './components/MonthlyHistory';
 import DateRangeFilter from './components/DateRangeFilter';
 import ExpenseFormModal from './components/ExpenseFormModal';
+import CategoryChart from './components/CategoryChart';
 
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
@@ -230,6 +231,8 @@ export default function App() {
           }}
           onDelete={handleDeleteExpense}
         />
+
+        <CategoryChart token={token} />
 
         {/* 4. Date Range Query */}
         <DateRangeFilter
