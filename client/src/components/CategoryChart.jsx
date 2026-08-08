@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { PieChart as ChartIcon, Calendar } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+  PieChart,
+  Pie,
+} from 'recharts';
+import { PieChart as ChartIcon, BarChart3, Donut } from 'lucide-react';
 import axios from 'axios';
 
 const COLORS = [
@@ -14,12 +24,35 @@ const COLORS = [
   '#64748b', // Slate
 ];
 
+// const COLORS = [
+//   '#4f46e5', // Indigo-600
+//   '#10b981', // Emerald-500
+//   '#f59e0b', // Amber-500
+//   '#ec4899', // Pink-500
+//   '#06b6d4', // Cyan-500
+//   '#8b5cf6', // Purple-500
+//   '#f97316', // Orange-500
+//   '#64748b', // Slate-500
+// ];
+
+// const COLORS = [
+//   '#3b82f6', // Bright Blue
+//   '#14b8a6', // Teal
+//   '#f43f5e', // Rose
+//   '#a855f7', // Violet
+//   '#eab308', // Yellow/Gold
+//   '#0284c7', // Sky Blue
+//   '#fb923c', // Warm Peach
+//   '#475569', // Cool Gray
+// ];
+
 export default function CategoryChart({ token }) {
   const currentYear = new Date().getFullYear();
   const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
 
   const [selectedYear, setSelectedYear] = useState(String(currentYear));
-  const [selectedMonth, setSelectedMonth] = useState(currentMonth); // 'all' or '01'-'12'
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+  const [chartType, setChartType] = useState('bar'); // 'bar' or 'donut'
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [totalSpent, setTotalSpent] = useState(0);
@@ -50,7 +83,6 @@ export default function CategoryChart({ token }) {
     setLoading(true);
 
     try {
-      // Calculate date range depending on whether "All Months" or a specific month is chosen
       let startDate, endDate;
 
       if (selectedMonth === 'all') {
@@ -68,25 +100,24 @@ export default function CategoryChart({ token }) {
       );
 
       const expenses = res.data.expenses || [];
-
-      // Group totals by Category
       const categoryMap = {};
       let sum = 0;
 
       expenses.forEach((exp) => {
         const amt = parseFloat(exp.amount);
         const cat = exp.category || 'General';
-        // Clean up display category name
         const cleanCat = cat.split('/')[0].trim();
 
         categoryMap[cleanCat] = (categoryMap[cleanCat] || 0) + amt;
         sum += amt;
       });
 
-      const formattedData = Object.keys(categoryMap).map((cat) => ({
-        name: cat,
-        value: categoryMap[cat],
-      }));
+      const formattedData = Object.keys(categoryMap)
+        .map((cat) => ({
+          name: cat,
+          value: categoryMap[cat],
+        }))
+        .sort((a, b) => b.value - a.value);
 
       setChartData(formattedData);
       setTotalSpent(sum);
@@ -99,14 +130,36 @@ export default function CategoryChart({ token }) {
 
   return (
     <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
+      {/* Header & Chart View Switcher */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-bold text-slate-800 flex items-center space-x-2">
           <ChartIcon className="w-4 h-4 text-blue-600" />
-          <span>કેટેગરી વાઈઝ એનાલિસિસ (Category Analysis)</span>
+          <span>કેટેગરી પૃથક્કરણ (Category Analysis)</span>
         </h3>
+
+        <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-lg">
+          <button
+            onClick={() => setChartType('bar')}
+            className={`p-1.5 rounded-md transition-all ${
+              chartType === 'bar' ? 'bg-white shadow text-blue-600' : 'text-slate-500'
+            }`}
+            title="Vertical Bar View"
+          >
+            <BarChart3 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setChartType('donut')}
+            className={`p-1.5 rounded-md transition-all ${
+              chartType === 'donut' ? 'bg-white shadow text-blue-600' : 'text-slate-500'
+            }`}
+            title="Donut View"
+          >
+            <Donut className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
-      {/* Filter Selectors */}
+      {/* Date Selectors */}
       <div className="grid grid-cols-2 gap-3 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
         <div>
           <label className="block text-[11px] font-semibold text-slate-500 mb-1">વર્ષ (Year)</label>
@@ -139,56 +192,92 @@ export default function CategoryChart({ token }) {
         </div>
       </div>
 
-      {/* Chart Display Container */}
+      {/* Dynamic Interactive Chart */}
       {loading ? (
-        <div className="py-12 text-center text-xs text-slate-400">લોડ થઈ રહ્યું છે... (Loading chart...)</div>
+        <div className="py-12 text-center text-xs text-slate-400">લોડ થઈ રહ્યું છે... (Loading...)</div>
       ) : chartData.length === 0 ? (
         <div className="py-10 text-center text-xs text-slate-400">
-          આ સમયગાળા માટે કોઈ ખર્ચ નથી (No expense data available for selected period)
+          આ સમયગાળા માટે કોઈ ડેટા મળ્યો નથી (No expenses in this period)
         </div>
       ) : (
-        <div className="space-y-3">
-          <div className="h-60 w-full relative">
+        <div className="space-y-4">
+          <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
+              {chartType === 'bar' ? (
+                /* Vertical Bar Chart */
+                <BarChart
                   data={chartData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={3}
-                  dataKey="value"
+                  margin={{ top: 15, right: 10, left: -10, bottom: 25 }}
                 >
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(val) => `₹${val.toFixed(2)}`} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
-              </PieChart>
+                  <XAxis
+                    dataKey="name"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 10, fill: '#475569' }}
+                    interval={0}
+                    angle={-20}
+                    textAnchor="end"
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 10, fill: '#475569' }}
+                  />
+                  <Tooltip
+                    formatter={(val) => `₹${val.toFixed(2)}`}
+                    contentStyle={{ borderRadius: '8px', fontSize: '12px' }}
+                  />
+                  <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                    {chartData.map((entry, index) => (
+                      <Cell key={`bar-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              ) : (
+                /* Donut Chart View */
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={80}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell key={`donut-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(val) => `₹${val.toFixed(2)}`}
+                    contentStyle={{ borderRadius: '8px', fontSize: '12px' }}
+                  />
+                </PieChart>
+              )}
             </ResponsiveContainer>
           </div>
 
-          {/* Breakdown Table List */}
+          {/* Itemized List */}
           <div className="pt-2 border-t border-slate-100 space-y-1.5">
             <div className="flex justify-between items-center text-xs font-bold text-slate-800 mb-1">
-              <span>Category Total:</span>
+              <span>કુલ ખર્ચ (Total Category Spend):</span>
               <span className="text-blue-700">₹{totalSpent.toFixed(2)}</span>
             </div>
+
             {chartData.map((item, idx) => {
               const percentage = totalSpent > 0 ? ((item.value / totalSpent) * 100).toFixed(1) : 0;
               return (
-                <div key={item.name} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-slate-50">
+                <div key={item.name} className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-lg bg-slate-50 border border-slate-100">
                   <div className="flex items-center space-x-2">
                     <span
-                      className="w-2.5 h-2.5 rounded-full"
+                      className="w-3 h-3 rounded-full shrink-0"
                       style={{ backgroundColor: COLORS[idx % COLORS.length] }}
                     ></span>
-                    <span className="font-medium text-slate-700">{item.name}</span>
+                    <span className="font-semibold text-slate-800">{item.name}</span>
                   </div>
-                  <div className="space-x-2 font-semibold">
-                    <span className="text-slate-500">{percentage}%</span>
+                  <div className="space-x-3 font-semibold">
+                    <span className="text-slate-400">{percentage}%</span>
                     <span className="text-slate-900">₹{item.value.toFixed(2)}</span>
                   </div>
                 </div>
