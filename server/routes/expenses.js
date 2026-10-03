@@ -245,4 +245,29 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// 10. GET DATABASE STORAGE STATS (Neon 500MB Free Tier Limit)
+router.get('/db-storage', async (req, res) => {
+  try {
+    const sizeQuery = `
+      SELECT pg_database_size(current_database()) AS size_bytes;
+    `;
+    const result = await db.query(sizeQuery);
+    const sizeBytes = parseInt(result.rows[0].size_bytes, 10) || 0;
+    const sizeMB = (sizeBytes / (1024 * 1024)).toFixed(2);
+    
+    const limitMB = 500; // Neon Free Tier limit
+    const usedPercentage = ((sizeMB / limitMB) * 100).toFixed(1);
+
+    res.json({
+      sizeBytes,
+      sizeMB: parseFloat(sizeMB),
+      limitMB,
+      usedPercentage: parseFloat(usedPercentage),
+    });
+  } catch (err) {
+    console.error('Error fetching DB storage stats:', err);
+    res.status(500).json({ message: 'Failed to fetch database storage info.' });
+  }
+});
+
 module.exports = router;

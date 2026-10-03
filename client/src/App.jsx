@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { Loader2, Sparkles } from 'lucide-react';
 
 axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -20,6 +21,10 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [authError, setAuthError] = useState('');
+
+  // Loading & Cold-Start States
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [slowServerNotice, setSlowServerNotice] = useState(false);
 
   // Dashboard Data
   const [summary, setSummary] = useState({ todayTotal: 0, monthTotal: 0, yearTotal: 0 });
@@ -64,7 +69,17 @@ export default function App() {
 
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setAuthError('');
+    setIsSubmitting(true);
+    setSlowServerNotice(false);
+
+    // If request takes longer than 3 seconds (Render cold start), show status notice
+    const slowTimer = setTimeout(() => {
+      setSlowServerNotice(true);
+    }, 3000);
+
     const endpoint = isRegistering ? '/api/auth/register' : '/api/auth/login';
 
     try {
@@ -77,9 +92,13 @@ export default function App() {
       localStorage.setItem('token', newToken);
       setToken(newToken);
       setUser(res.data.user);
-      fetchDashboardData(newToken);
+      await fetchDashboardData(newToken);
     } catch (err) {
-      setAuthError(err.response?.data?.message || 'Authentication failed');
+      setAuthError(err.response?.data?.message || 'Authentication failed. Please try again.');
+    } finally {
+      clearTimeout(slowTimer);
+      setIsSubmitting(false);
+      setSlowServerNotice(false);
     }
   };
 
@@ -156,9 +175,10 @@ export default function App() {
               <input
                 type="text"
                 required
+                disabled={isSubmitting}
                 value={usernameInput}
                 onChange={(e) => setUsernameInput(e.target.value)}
-                className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:outline-none min-h-[48px]"
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:outline-none min-h-[48px] disabled:bg-slate-50 disabled:text-slate-500"
               />
             </div>
 
@@ -167,24 +187,48 @@ export default function App() {
               <input
                 type="password"
                 required
+                disabled={isSubmitting}
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
-                className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:outline-none min-h-[48px]"
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:outline-none min-h-[48px] disabled:bg-slate-50 disabled:text-slate-500"
               />
             </div>
 
+            {slowServerNotice && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-center space-x-2">
+                <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  સર્વર ચાલુ થઈ રહ્યું છે, કૃપા કરીને થોડી સેકન્ડ રાહ જુઓ... <br />
+                  (Free server is waking up, please wait a moment...)
+                </span>
+              </div>
+            )}
+
             <button
               type="submit"
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-sm min-h-[48px]"
+              disabled={isSubmitting}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-400 text-white font-bold rounded-xl shadow-sm transition-all flex items-center justify-center space-x-2 min-h-[48px] cursor-pointer disabled:cursor-not-allowed"
             >
-              {isRegistering ? 'રજીસ્ટર કરો (Register)' : 'લોગીન કરો (Login)'}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>
+                    {isRegistering ? 'રજીસ્ટ્રેશન થઈ રહ્યું છે...' : 'લોગીન થઈ રહ્યું છે...'}
+                  </span>
+                </>
+              ) : (
+                <span>
+                  {isRegistering ? 'રજીસ્ટર કરો (Register)' : 'લોગીન કરો (Login)'}
+                </span>
+              )}
             </button>
           </form>
 
           <div className="text-center">
             <button
+              disabled={isSubmitting}
               onClick={() => setIsRegistering(!isRegistering)}
-              className="text-xs font-semibold text-blue-600 hover:underline"
+              className="text-xs font-semibold text-blue-600 hover:underline disabled:text-slate-400"
             >
               {isRegistering
                 ? 'પહેલેથી એકાઉન્ટ છે? લોગીન કરો (Already have an account?)'
@@ -198,10 +242,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-12">
-      <Navbar username={user.username} onLogout={handleLogout} />
+      <Navbar username={user.username} onLogout={handleLogout} token={token} />
 
       <main className="max-w-md mx-auto p-4 space-y-4">
-        {/* 1. Summary Cards (Today, Month, Year) + Add Button */}
         <SummaryCards
           todayTotal={summary.todayTotal}
           monthTotal={summary.monthTotal}
@@ -212,7 +255,6 @@ export default function App() {
           }}
         />
 
-        {/* 2. Current Month Expenses (Grouped by Date) */}
         <CurrentMonthExpenses
           currentMonthExpenses={currentMonthExpenses}
           onEdit={(expense) => {
@@ -222,7 +264,8 @@ export default function App() {
           onDelete={handleDeleteExpense}
         />
 
-        {/* 3. Monthly History (Previous Months) */}
+        <CategoryChart token={token} />
+
         <MonthlyHistory
           historySummary={historySummary}
           onEdit={(expense) => {
@@ -232,9 +275,6 @@ export default function App() {
           onDelete={handleDeleteExpense}
         />
 
-        <CategoryChart token={token} />
-
-        {/* 4. Date Range Query */}
         <DateRangeFilter
           onFetchRange={handleFetchRange}
           rangeData={rangeData}
