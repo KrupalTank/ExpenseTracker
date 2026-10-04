@@ -246,13 +246,15 @@ export default function App() {
 
       <main className="max-w-md mx-auto p-4 space-y-4">
         <SummaryCards
-          todayTotal={summary.todayTotal}
+          currentBalance={summary.currentBalance}
           monthTotal={summary.monthTotal}
           yearTotal={summary.yearTotal}
           onOpenAddModal={() => {
             setEditingExpense(null);
             setIsModalOpen(true);
           }}
+          token={token}
+          onBalanceUpdated={() => fetchDashboardData(token)}
         />
 
         <CurrentMonthExpenses

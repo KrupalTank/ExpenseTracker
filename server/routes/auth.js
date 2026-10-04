@@ -105,4 +105,28 @@ router.get('/me', authenticateToken, async (req, res) => {
   }
 });
 
+// 4. UPDATE CURRENT BALANCE
+router.put('/balance', authenticateToken, async (req, res) => {
+  const { balance } = req.body;
+
+  if (balance === undefined || isNaN(balance)) {
+    return res.status(400).json({ message: 'Valid balance amount is required.' });
+  }
+
+  try {
+    const updatedUser = await db.query(
+      'UPDATE users SET current_balance = $1 WHERE id = $2 RETURNING id, username, current_balance',
+      [parseFloat(balance), req.user.id]
+    );
+
+    res.json({
+      message: 'Balance updated successfully.',
+      currentBalance: parseFloat(updatedUser.rows[0].current_balance),
+    });
+  } catch (err) {
+    console.error('Error updating balance:', err);
+    res.status(500).json({ message: 'Failed to update balance.' });
+  }
+});
+
 module.exports = router;

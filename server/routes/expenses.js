@@ -5,15 +5,15 @@ const authenticateToken = require('../middleware/auth');
 const router = express.Router();
 router.use(authenticateToken);
 
-// 1. GET TODAY, MONTH, AND YEAR SUMMARY
+// 1. GET CURRENT BALANCE, MONTH, AND YEAR SUMMARY
 router.get('/summary', async (req, res) => {
   const userId = req.user.id;
 
   try {
-    const todayQuery = `
-      SELECT COALESCE(SUM(amount), 0) AS today_total
-      FROM expenses
-      WHERE user_id = $1 AND expense_date = CURRENT_DATE;
+    const userQuery = `
+      SELECT COALESCE(current_balance, 0.00) AS current_balance
+      FROM users
+      WHERE id = $1;
     `;
 
     const monthQuery = `
@@ -30,14 +30,14 @@ router.get('/summary', async (req, res) => {
         AND DATE_TRUNC('year', expense_date) = DATE_TRUNC('year', CURRENT_DATE);
     `;
 
-    const [todayResult, monthResult, yearResult] = await Promise.all([
-      db.query(todayQuery, [userId]),
+    const [userResult, monthResult, yearResult] = await Promise.all([
+      db.query(userQuery, [userId]),
       db.query(monthQuery, [userId]),
       db.query(yearQuery, [userId]),
     ]);
 
     res.json({
-      todayTotal: parseFloat(todayResult.rows[0].today_total),
+      currentBalance: parseFloat(userResult.rows[0]?.current_balance || 0),
       monthTotal: parseFloat(monthResult.rows[0].month_total),
       yearTotal: parseFloat(yearResult.rows[0].year_total),
     });
@@ -88,7 +88,7 @@ router.get('/current-month', async (req, res) => {
   }
 });
 
-// 4. CREATE EXPENSE
+// 4. CREATE EXPENSE (Subtracts from current_balance)
 router.post('/', async (req, res) => {
   const userId = req.user.id;
   const { title, amount, category, expense_date } = req.body;
@@ -102,13 +102,21 @@ router.post('/', async (req, res) => {
       ? expense_date 
       : new Date().toLocaleDateString('en-CA');
 
+    const numericAmount = parseFloat(amount);
+
     const queryText = `
       INSERT INTO expenses (user_id, title, amount, category, expense_date)
       VALUES ($1, $2, $3, $4, $5::DATE)
       RETURNING *, expense_date::TEXT as expense_date;
     `;
-    const values = [userId, title.trim(), amount, category || 'General', dateToInsert];
+    const values = [userId, title.trim(), numericAmount, category || 'General', dateToInsert];
     const result = await db.query(queryText, values);
+
+    // Deduct expense from current_balance
+    await db.query(
+      'UPDATE users SET current_balance = COALESCE(current_balance, 0) - $1 WHERE id = $2',
+      [numericAmount, userId]
+    );
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -200,24 +208,36 @@ router.get('/history/month/:monthKey', async (req, res) => {
   }
 });
 
-// 8. UPDATE EXPENSE
+// 8. UPDATE EXPENSE (Adjusts current_balance by the net difference)
 router.put('/:id', async (req, res) => {
   const userId = req.user.id;
   const { id } = req.params;
   const { title, amount, category, expense_date } = req.body;
 
   try {
+    // Get existing expense amount
+    const oldExpense = await db.query('SELECT amount FROM expenses WHERE id = $1 AND user_id = $2', [id, userId]);
+    if (oldExpense.rows.length === 0) {
+      return res.status(404).json({ message: 'Expense not found or unauthorized.' });
+    }
+
+    const oldAmount = parseFloat(oldExpense.rows[0].amount);
+    const newAmount = parseFloat(amount);
+    const difference = newAmount - oldAmount;
+
     const queryText = `
       UPDATE expenses
       SET title = $1, amount = $2, category = $3, expense_date = $4::DATE
       WHERE id = $5 AND user_id = $6
       RETURNING *, expense_date::TEXT as expense_date;
     `;
-    const result = await db.query(queryText, [title, amount, category, expense_date, id, userId]);
+    const result = await db.query(queryText, [title, newAmount, category, expense_date, id, userId]);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Expense not found or unauthorized.' });
-    }
+    // Adjust balance by the difference
+    await db.query(
+      'UPDATE users SET current_balance = COALESCE(current_balance, 0) - $1 WHERE id = $2',
+      [difference, userId]
+    );
 
     res.json(result.rows[0]);
   } catch (err) {
@@ -226,17 +246,28 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// 9. DELETE EXPENSE
+// 9. DELETE EXPENSE (Restores amount to current_balance)
 router.delete('/:id', async (req, res) => {
   const userId = req.user.id;
   const { id } = req.params;
 
   try {
-    const result = await db.query('DELETE FROM expenses WHERE id = $1 AND user_id = $2 RETURNING id', [id, userId]);
+    const result = await db.query(
+      'DELETE FROM expenses WHERE id = $1 AND user_id = $2 RETURNING id, amount',
+      [id, userId]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Expense not found or unauthorized.' });
     }
+
+    const deletedAmount = parseFloat(result.rows[0].amount);
+
+    // Restore deleted amount back to current_balance
+    await db.query(
+      'UPDATE users SET current_balance = COALESCE(current_balance, 0) + $1 WHERE id = $2',
+      [deletedAmount, userId]
+    );
 
     res.json({ message: 'Expense deleted successfully.', id });
   } catch (err) {
@@ -269,5 +300,7 @@ router.get('/db-storage', async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch database storage info.' });
   }
 });
+
+
 
 module.exports = router;
